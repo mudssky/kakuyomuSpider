@@ -5,71 +5,67 @@ import pymongo
 from kakuyomuSpider.items import PublicationSpiderItem
 
 class PublicationSpider(scrapy.Spider):
-    name = 'publication'
+    name = 'top500'
     allowed_domains = ['kakuyomu.jp']
     start_urls = ['https://kakuyomu.jp/publication/']
     collection_name = 'publication'
 
     def __init__(self,*args, **kwargs):
         super().__init__(*args, **kwargs)
+        # self.logger.setLevel()
         self.client=pymongo.MongoClient('127.0.0.1:27017')
         self.db=self.client['kakuyomuSpider']
-    def has_book(self,bookInfoUrl):
-        count=self.db[self.collection_name].find({'bookInfoUrl':bookInfoUrl}).count()
+    def has_bookbyBookInex(self,bookIndex):
+        count=self.db[self.collection_name].find({'bookIndex':bookIndex}).count()
         if count==0:
             return False
         return True
     def start_requests(self):
         if not os.path.exists('publication'):
             os.mkdir('publication')
-        yield scrapy.Request(url='https://kakuyomu.jp/publication/',callback=self.parse_publicationpage)
+        yield scrapy.Request(url='https://kakuyomu.jp/rankings/all/entire',callback=self.parse_rankingpage)
 
-    def parse_publicationpage(self,response):
-        for bookInfoUrl in  response.css('#main-inner .work-title a::attr(href)').getall():
-            item=PublicationSpiderItem()
-            item['bookInfoUrl']=bookInfoUrl
-            if not self.has_book(bookInfoUrl):
-                yield scrapy.Request(url=bookInfoUrl,meta={'item':item},callback=self.parse_bookInfo)
-        nextpage= response.css('.pager-next a::attr(href)').get()
+    def parse_rankingpage(self,response):
+        for bookIndexUrl in response.css('.widget-workCard-title a::attr(href)').getall():
+            item = PublicationSpiderItem()
+            item['bookIndexUrl'] = response.urljoin(bookIndexUrl)
+            item['bookInfoUrl'] =''
+            if not self.has_bookbyBookInex(bookIndexUrl):
+                yield scrapy.Request(url=item['bookIndexUrl'],meta={'item':item},callback=self.parse_bookIndex)
+        nextpage = response.css('.widget-pagerNext a::attr(href)').get()
         if nextpage is not None:
-            yield scrapy.Request(url=nextpage,callback=self.parse_publicationpage)
+            nextUrl = response.urljoin(nextpage)
+            yield scrapy.Request(url=nextUrl,callback=self.parse_rankingpage)
+
+
     def getOneFromReList(self,relist):
         if len(relist)==0:
             return ''
         else:
             return relist[0]
-    def parse_bookInfo(self,response):
-        item=response.meta['item']
-        detailView=response.css('.detailView')
-        if len(detailView.css('.isComic'))!=0:
-            item['isComic'] = True
-        else:
-            item['isComic'] = False
-        item['coverUrl'] = detailView.css('.work-thumbnail img::attr(src)').get()
-        item['catchphrase'] = detailView.css('.work-catchphrase::text').get()
-        item['title'] = detailView.css('.work-title::text').get()
-        # work-author = detailView.css('.work-author')
-        item['author'] = detailView.css('.work-author a::text').get()
-        item['other_authors'] = ' '.join(detailView.css('.work-author::text').getall())
 
-        item['bookIndexUrl'] = detailView.css('.work-continueReading a::attr(href)').getall()[-1]
-        work_info = detailView.css('.work-info')
-        # info_list = work_info.css('div dd::text').getall()
-        item['publisher'] = self.getOneFromReList(work_info.re('出版社[\s\S]*?dd>(.*?)</dd'))
-        item['label'] = self.getOneFromReList(work_info.re('レーベル[\s\S]*?dd>(.*?)</dd'))
-        item['on_sale'] = self.getOneFromReList(work_info.re('発売日[\s\S]*?dd>(.*?)</dd'))
-        item['price'] = self.getOneFromReList(work_info.re('定価[\s\S]*?dd>(.*?)</dd'))
-        item['ISBN'] = self.getOneFromReList(work_info.re('ISBN[\s\S]*?dd>(.*?)</dd'))
-        item['shiyo'] = self.getOneFromReList(work_info.re('仕様[\s\S]*?dd>(.*?)</dd'))
-
-        yield scrapy.Request(url=item['bookIndexUrl'],callback=self.parse_bookIndex,meta={'item':item})
 
     def parse_bookIndex(self, response):
         item=response.meta['item']
         workHeaderInner = response.css('#workHeader-inner')
-
+        if len(response.css('.isComic'))!=0:
+            item['isComic'] = True
+        else:
+            item['isComic'] = False
+        item['title'] = workHeaderInner.css('#workTitle a::text').get()
+        item['catchphrase'] = response.css('#catchphrase-body::text').get()
+        item['coverUrl'] = ''
+        item['other_authors'] = ''
+        item['author'] = workHeaderInner.css('#workAuthor-activityName a::text').get()
         item['reviews'] = workHeaderInner.css('#workPoints span::text').get()
         item['genre'] = workHeaderInner.css('#workGenre a::text').get()
+
+        item['publisher'] = ''
+        item['label'] = ''
+        item['price'] = ''
+        item['ISBN'] = ''
+        item['shiyo'] = ''
+
 
         item['attentions'] = workHeaderInner.css('#workMeta-attention li::text').getall()
         item['keywords'] = workHeaderInner.css('#workMeta-tags li a::text').getall()
