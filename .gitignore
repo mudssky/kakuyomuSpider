@@ -8,6 +8,9 @@
 syosetu/
 publication*/
 
+# 忽略 scrapy 的缓存文件
+.scrapy/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

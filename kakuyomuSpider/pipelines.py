@@ -29,7 +29,7 @@ class SaveNovelPipeline(object):
     # tmpDict['content']
     def process_item(self,item,spider):
         textStr=''
-        folderName = 'publication'
+        folderName = 'reading'
         for section in item['contentList']:
             textStr+=section['pageTitle']+'\n'+section['datePublished']+'\n'+section['content']+'\n'
         filename='{title}[{author}].txt'.format(title=item.get('title'),author=item.get('author'))
